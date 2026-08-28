@@ -1,5 +1,3 @@
-use std::num::ParseIntError;
-
 use crate::token::{Token, lookup_identifier};
 
 // TODO: Support UTF-8
@@ -40,6 +38,10 @@ impl Lexer {
         self.skip_whitespace();
 
         let tok = match self.ch {
+            b'=' if self.peek_char() == b'=' => {
+                self.read_char();
+                Token::Eq
+            }
             b'=' => Token::Assign,
             b'+' => Token::Plus,
             b'(' => Token::LParen,
@@ -48,15 +50,26 @@ impl Lexer {
             b'}' => Token::RBrace,
             b',' => Token::Comma,
             b';' => Token::Semicolon,
+            b'-' => Token::Minus,
+            b'*' => Token::Asterisk,
+            b'!' if self.peek_char() == b'=' => {
+                self.read_char();
+                Token::NotEq
+            }
+            b'!' => Token::Bang,
+            b'/' => Token::Slash,
+            b'>' => Token::Gt,
+            b'<' => Token::Lt,
             0 => Token::Eof,
             c if is_letter(c) => return lookup_identifier(self.read_identifier()),
             c if c.is_ascii_digit() => {
-                return match self.read_number() {
+                let lit = self.read_number();
+                return match lit.parse::<i64>() {
                     Ok(num) => Token::Int(num),
-                    Err(_) => Token::Illegal,
+                    Err(_) => Token::Illegal(lit.to_string()),
                 };
             }
-            _ => Token::Illegal,
+            c => Token::Illegal(c.to_string()),
         };
 
         self.read_char();
@@ -78,13 +91,21 @@ impl Lexer {
         &self.input[start..self.position]
     }
 
-    fn read_number(&mut self) -> Result<i64, ParseIntError> {
+    fn read_number(&mut self) -> &str {
         let start = self.position;
         while self.ch.is_ascii_digit() {
             self.read_char();
         }
 
-        self.input[start..self.position].parse::<i64>()
+        &self.input[start..self.position]
+    }
+
+    fn peek_char(&self) -> u8 {
+        if self.read_position >= self.input.len() {
+            0
+        } else {
+            self.input.as_bytes()[self.read_position]
+        }
     }
 }
 
@@ -97,7 +118,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn t_next_token_symbols() {
+    fn next_token_symbols() {
         let mut lexer = Lexer::new(String::from("=+(){},;"));
         let cases = [
             Token::Assign,
@@ -113,12 +134,12 @@ mod tests {
 
         for (i, want) in cases.into_iter().enumerate() {
             let got = lexer.next_token();
-            assert_eq!(got, want, "test_case[{i}]");
+            assert_eq!(got, want, "test_case[{i}] at byte {}", lexer.position);
         }
     }
 
     #[test]
-    fn t_next_token_basic() {
+    fn next_token_basic() {
         let input = r#"
 let five = 5;
 let ten = 10;
@@ -128,6 +149,17 @@ let add = fn(x, y) {
 };
 
 let result = add(five, ten);
+!-/*5;
+5 < 10 > 5;
+
+if (5 < 10) {
+    return true;
+} else {
+  return false;
+}
+
+10 == 10;
+5 != 10;
 "#;
         let mut lexer = Lexer::new(input.to_string());
 
@@ -168,11 +200,49 @@ let result = add(five, ten);
             Token::Ident("ten".to_string()),
             Token::RParen,
             Token::Semicolon,
+            Token::Bang,
+            Token::Minus,
+            Token::Slash,
+            Token::Asterisk,
+            Token::Int(5),
+            Token::Semicolon,
+            Token::Int(5),
+            Token::Lt,
+            Token::Int(10),
+            Token::Gt,
+            Token::Int(5),
+            Token::Semicolon,
+            Token::If,
+            Token::LParen,
+            Token::Int(5),
+            Token::Lt,
+            Token::Int(10),
+            Token::RParen,
+            Token::LBrace,
+            Token::Return,
+            Token::True,
+            Token::Semicolon,
+            Token::RBrace,
+            Token::Else,
+            Token::LBrace,
+            Token::Return,
+            Token::False,
+            Token::Semicolon,
+            Token::RBrace,
+            Token::Int(10),
+            Token::Eq,
+            Token::Int(10),
+            Token::Semicolon,
+            Token::Int(5),
+            Token::NotEq,
+            Token::Int(10),
+            Token::Semicolon,
+            Token::Eof,
         ];
 
         for (i, want) in cases.into_iter().enumerate() {
             let got = lexer.next_token();
-            assert_eq!(got, want, "test_case[{i}]");
+            assert_eq!(got, want, "test_case[{i}] at byte {}", lexer.position);
         }
     }
 }
