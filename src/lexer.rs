@@ -69,7 +69,7 @@ impl Lexer {
                     Err(_) => Token::Illegal(lit.to_string()),
                 };
             }
-            c => Token::Illegal(c.to_string()),
+            c => Token::Illegal((c as char).to_string()),
         };
 
         self.read_char();
