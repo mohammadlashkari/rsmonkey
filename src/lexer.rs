@@ -160,6 +160,7 @@ if (5 < 10) {
 
 10 == 10;
 5 != 10;
+@#
 "#;
         let mut lexer = Lexer::new(input.to_string());
 
@@ -237,6 +238,8 @@ if (5 < 10) {
             Token::NotEq,
             Token::Int(10),
             Token::Semicolon,
+            Token::Illegal("@".to_string()),
+            Token::Illegal("#".to_string()),
             Token::Eof,
         ];
 
