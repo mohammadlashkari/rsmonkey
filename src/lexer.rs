@@ -1,45 +1,39 @@
 use crate::token::{Token, lookup_identifier};
 
 // TODO: Support UTF-8
+// TODO: Add span to Lexer
+
 pub struct Lexer {
     input: String,
-    // Current position in input
-    // Points to the character in the input that corresponds to the ch byte
+    // Points to the character in the input
     position: usize,
-    // Points  to the next character in the input
-    read_position: usize,
-    ch: u8,
 }
 
 impl Lexer {
     pub fn new(input: String) -> Self {
-        let mut s = Self {
-            input,
-            position: 0,
-            read_position: 0,
-            ch: 0,
-        };
-        s.read_char();
-
-        s
+        Self { input, position: 0 }
     }
 
-    fn read_char(&mut self) {
-        if self.read_position >= self.input.len() {
-            self.ch = 0;
-        } else {
-            self.ch = self.input.as_bytes()[self.read_position]
-        }
-        self.position = self.read_position;
-        self.read_position += 1;
+    fn current(&self) -> Option<u8> {
+        self.input.as_bytes().get(self.position).copied()
     }
 
-    pub fn next_token(&mut self) -> Token {
+    fn peek(&self) -> Option<u8> {
+        self.input.as_bytes().get(self.position + 1).copied()
+    }
+
+    fn advance(&mut self) {
+        self.position += 1;
+    }
+
+    fn next_token(&mut self) -> Option<Token> {
         self.skip_whitespace();
 
-        let tok = match self.ch {
-            b'=' if self.peek_char() == b'=' => {
-                self.read_char();
+        let current = self.current()?;
+
+        let token = match current {
+            b'=' if self.peek() == Some(b'=') => {
+                self.advance();
                 Token::Eq
             }
             b'=' => Token::Assign,
@@ -52,40 +46,40 @@ impl Lexer {
             b';' => Token::Semicolon,
             b'-' => Token::Minus,
             b'*' => Token::Asterisk,
-            b'!' if self.peek_char() == b'=' => {
-                self.read_char();
+            b'!' if self.peek() == Some(b'=') => {
+                self.advance();
                 Token::NotEq
             }
             b'!' => Token::Bang,
             b'/' => Token::Slash,
             b'>' => Token::Gt,
             b'<' => Token::Lt,
-            0 => Token::Eof,
-            c if is_letter(c) => return lookup_identifier(self.read_identifier()),
+            c if is_letter(c) => return Some(lookup_identifier(self.read_identifier())),
             c if c.is_ascii_digit() => {
-                let lit = self.read_number();
-                return match lit.parse::<i64>() {
+                let literal = self.read_number();
+
+                return Some(match literal.parse::<i64>() {
                     Ok(num) => Token::Int(num),
-                    Err(_) => Token::Illegal(lit.to_string()),
-                };
+                    Err(_) => Token::Illegal(literal.to_string()),
+                });
             }
-            c => Token::Illegal((c as char).to_string()),
+            c => Token::Illegal(char::from(c).to_string()),
         };
 
-        self.read_char();
-        tok
+        self.advance();
+        Some(token)
     }
 
     fn skip_whitespace(&mut self) {
-        while self.ch.is_ascii_whitespace() {
-            self.read_char();
+        while self.current().is_some_and(|c| c.is_ascii_whitespace()) {
+            self.advance();
         }
     }
 
     fn read_identifier(&mut self) -> &str {
         let start = self.position;
-        while is_letter(self.ch) {
-            self.read_char();
+        while self.current().is_some_and(is_letter) {
+            self.advance();
         }
 
         &self.input[start..self.position]
@@ -93,19 +87,19 @@ impl Lexer {
 
     fn read_number(&mut self) -> &str {
         let start = self.position;
-        while self.ch.is_ascii_digit() {
-            self.read_char();
+        while self.current().is_some_and(|c| c.is_ascii_digit()) {
+            self.advance();
         }
 
         &self.input[start..self.position]
     }
+}
 
-    fn peek_char(&self) -> u8 {
-        if self.read_position >= self.input.len() {
-            0
-        } else {
-            self.input.as_bytes()[self.read_position]
-        }
+impl Iterator for Lexer {
+    type Item = Token;
+
+    fn next(&mut self) -> Option<Token> {
+        self.next_token()
     }
 }
 
@@ -115,12 +109,59 @@ fn is_letter(ch: u8) -> bool {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
 
+    #[track_caller]
+    fn assert_tokens(input: &str, want: &[Token]) {
+        let got: Vec<Token> = Lexer::new(input.to_string()).collect();
+
+        for (i, (got, want)) in got.iter().zip(want).enumerate() {
+            assert_eq!(got, want, "token[{i}] for input {input:?}");
+        }
+        assert_eq!(got.len(), want.len(), "token count for input {input:?}");
+    }
+
     #[test]
-    fn next_token_symbols() {
-        let mut lexer = Lexer::new(String::from("=+(){},;"));
-        let cases = [
+    fn lex_ends_with_none() {
+        let mut lexer = Lexer::new(String::new());
+        assert_eq!(lexer.next(), None);
+        assert_eq!(lexer.next(), None);
+    }
+
+    #[test]
+    fn lex_nul_byte_is_illegal() {
+        let input = "let x\0 = 5;";
+        let want = [
+            Token::Let,
+            Token::Ident("x".to_string()),
+            Token::Illegal("\0".to_string()),
+            Token::Assign,
+            Token::Int(5),
+            Token::Semicolon,
+        ];
+
+        assert_tokens(input, &want);
+    }
+
+    #[test]
+    fn lex_simple() {
+        let input = r#"let foo = 5;"#;
+        let want = [
+            Token::Let,
+            Token::Ident("foo".to_string()),
+            Token::Assign,
+            Token::Int(5),
+            Token::Semicolon,
+        ];
+
+        assert_tokens(input, &want);
+    }
+
+    #[test]
+    fn lex_symbols() {
+        let input = r#"=+(){},;"#;
+        let want = [
             Token::Assign,
             Token::Plus,
             Token::LParen,
@@ -129,17 +170,13 @@ mod tests {
             Token::RBrace,
             Token::Comma,
             Token::Semicolon,
-            Token::Eof,
         ];
 
-        for (i, want) in cases.into_iter().enumerate() {
-            let got = lexer.next_token();
-            assert_eq!(got, want, "test_case[{i}] at byte {}", lexer.position);
-        }
+        assert_tokens(input, &want);
     }
 
     #[test]
-    fn next_token_basic() {
+    fn lex_complex() {
         let input = r#"
 let five = 5;
 let ten = 10;
@@ -162,9 +199,8 @@ if (5 < 10) {
 5 != 10;
 @#
 "#;
-        let mut lexer = Lexer::new(input.to_string());
 
-        let cases = [
+        let want = [
             Token::Let,
             Token::Ident("five".to_string()),
             Token::Assign,
@@ -240,12 +276,8 @@ if (5 < 10) {
             Token::Semicolon,
             Token::Illegal("@".to_string()),
             Token::Illegal("#".to_string()),
-            Token::Eof,
         ];
 
-        for (i, want) in cases.into_iter().enumerate() {
-            let got = lexer.next_token();
-            assert_eq!(got, want, "test_case[{i}] at byte {}", lexer.position);
-        }
+        assert_tokens(input, &want);
     }
 }
