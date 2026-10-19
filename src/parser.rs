@@ -1,20 +1,43 @@
-use std::fmt;
+use std::{fmt, iter::Peekable};
 
-use crate::{
-    ast::{LetStatement, Program, Statement},
-    lexer::Lexer,
-    token::Token,
-};
+use crate::ast::{Identifier, LetStatement, Program, Statement};
+
+use crate::lexer::Lexer;
+use crate::token::Token;
 
 pub struct Parser {
-    lexer: Lexer,
-    cur_token: Token,
-    peek_token: Token,
+    tokens: Peekable<Lexer>,
 }
 
 impl Parser {
     pub fn new(lexer: Lexer) -> Self {
-        todo!()
+        Self {
+            tokens: lexer.peekable(),
+        }
+    }
+
+    fn eat(&mut self, token: &Token) -> bool {
+        self.tokens.next_if_eq(token).is_some()
+    }
+
+    fn expect(&mut self, want: Token) -> Result<(), ParseError> {
+        match self.tokens.next() {
+            Some(got) if got == want => Ok(()),
+            got => Err(ParseError {
+                got,
+                want: Expected::Token(want),
+            }),
+        }
+    }
+
+    fn expect_ident(&mut self) -> Result<Identifier, ParseError> {
+        match self.tokens.next() {
+            Some(Token::Ident(name)) => Ok(Identifier { name }),
+            got => Err(ParseError {
+                got,
+                want: Expected::Ident,
+            }),
+        }
     }
 
     pub fn parse_program(&mut self) -> Program {
@@ -22,10 +45,7 @@ impl Parser {
     }
 
     fn parse_statement(&mut self) -> Statement {
-        match self.cur_token {
-            Token::Let => Statement::Let(self.parse_let_statement()),
-            _ => todo!(),
-        }
+        todo!()
     }
 
     fn parse_let_statement(&mut self) -> LetStatement {
@@ -35,9 +55,9 @@ impl Parser {
 
 #[derive(Debug, PartialEq)]
 pub struct ParseError {
-    pub want: Expected,
     // None means end of input
     pub got: Option<Token>,
+    pub want: Expected,
 }
 
 #[derive(Debug, PartialEq)]
@@ -72,7 +92,11 @@ impl fmt::Display for Expected {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::Statement;
+
+    fn parser(input: &str) -> Parser {
+        let lexer = Lexer::new(input.to_string());
+        Parser::new(lexer)
+    }
 
     #[test]
     fn parse_error_display() {
@@ -90,7 +114,92 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "parser not implemented yet (Task 5)"]
+    fn eat_consumes_only_matching_token() {
+        let input = "= 5";
+        let mut parser = parser(input);
+
+        assert!(parser.eat(&Token::Assign));
+        assert!(!parser.eat(&Token::Assign));
+        assert_eq!(parser.tokens.next(), Some(Token::Int(5)));
+    }
+
+    #[test]
+    fn expect_consumes_matching_token() {
+        let mut parser = parser("= 5");
+
+        let got = parser.expect(Token::Assign);
+        let want = Ok(());
+
+        assert_eq!(got, want);
+        assert_eq!(parser.tokens.next(), Some(Token::Int(5)));
+    }
+
+    #[test]
+    fn expect_fails_on_wrong_token() {
+        let mut parser = parser("5");
+
+        let got = parser.expect(Token::Assign);
+        let want = Err(ParseError {
+            got: Some(Token::Int(5)),
+            want: Expected::Token(Token::Assign),
+        });
+
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    fn expect_fails_at_end_of_input() {
+        let mut parser = parser("");
+
+        let got = parser.expect(Token::Assign);
+        let want = Err(ParseError {
+            got: None,
+            want: Expected::Token(Token::Assign),
+        });
+
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    fn expect_ident_fails_at_end_of_input() {
+        let mut parser = parser("");
+
+        let got = parser.expect_ident();
+        let want = Err(ParseError {
+            got: None,
+            want: Expected::Ident,
+        });
+
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    fn expect_ident_fails_on_wrong_token() {
+        let mut parser = parser("5");
+
+        let got = parser.expect_ident();
+        let want = Err(ParseError {
+            got: Some(Token::Int(5)),
+            want: Expected::Ident,
+        });
+
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    fn expect_ident_moves_name_out() {
+        let mut parser = parser("foo");
+
+        let got = parser.expect_ident();
+        let want = Ok(Identifier {
+            name: "foo".to_string(),
+        });
+
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    #[ignore = "parser not implemented yet"]
     fn let_statements() {
         let input = r#"
 let x = 5;
