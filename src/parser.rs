@@ -1,12 +1,22 @@
 use std::{fmt, iter::Peekable};
 
-use crate::ast::{Expression, Ident, LetStatement, Program, Statement};
+use crate::ast::{self, Expression, Ident, LetStatement, Program, Statement};
 
 use crate::lexer::Lexer;
 use crate::token::Token;
 
 pub struct Parser {
     tokens: Peekable<Lexer>,
+}
+
+enum Precedence {
+    Lowest,
+    Equals,
+    LessGreater,
+    Sum,
+    Product,
+    Prefix,
+    Call,
 }
 
 impl Parser {
@@ -44,15 +54,12 @@ impl Parser {
         let stmt = if self.eat(&Token::Let) {
             Statement::Let(self.parse_let_statement()?)
         } else if self.eat(&Token::Return) {
-            Statement::Return(self.parse_expression()?)
+            Statement::Return(self.parse_expression(Precedence::Lowest)?)
         } else {
-            return Err(ParseError {
-                got: self.tokens.next(),
-                want: Expected::Statement,
-            });
+            Statement::Expression(self.parse_expression(Precedence::Lowest)?)
         };
 
-        // Semicolons are optional
+        // TODO: Semicolons are optional
         self.eat(&Token::Semicolon);
 
         Ok(stmt)
@@ -62,12 +69,16 @@ impl Parser {
         let ident = self.expect_ident()?;
         self.expect(Token::Assign)?;
 
-        let value = self.parse_expression()?;
+        let value = self.parse_expression(Precedence::Lowest)?;
 
         Ok(LetStatement { ident, value })
     }
 
-    fn parse_expression(&mut self) -> Result<Expression, ParseError> {
+    fn parse_expression(&mut self, precedence: Precedence) -> Result<Expression, ParseError> {
+        self.parse_prefix_expression()
+    }
+
+    fn parse_prefix_expression(&mut self) -> Result<Expression, ParseError> {
         match self.tokens.next() {
             Some(Token::Int(int)) => Ok(Expression::Integer(int)),
             Some(Token::Ident(name)) => Ok(Expression::Ident(Ident { name })),
@@ -115,7 +126,6 @@ pub enum Expected {
     Token(Token),
     Ident,
     Expression,
-    Statement,
 }
 
 impl fmt::Display for ParseError {
@@ -136,13 +146,14 @@ impl fmt::Display for Expected {
             Expected::Token(token) => write!(f, "'{token}'"),
             Expected::Ident => write!(f, "identifier"),
             Expected::Expression => write!(f, "expression"),
-            Expected::Statement => write!(f, "statement"),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use core::panic;
+
     use super::*;
 
     fn parser(input: &str) -> Parser {
@@ -271,7 +282,7 @@ let foo = 424242;
     fn let_statements_without_semicolons() {
         let program = parser("let x = 5 let y = x")
             .parse_program()
-            .unwrap_or_else(|errs| panic!("parser errors: {errs:?}"));
+            .unwrap_or_else(|errs| panic!("parser errors: {:?}", errs));
 
         let want = [
             let_int("x", 5),
@@ -333,6 +344,22 @@ return 4242;";
         }]);
 
         assert_eq!(got, want);
+    }
+
+    #[test]
+    fn parse_ident_expression() {
+        let got = Parser::parse("foo;").unwrap_or_else(|errs| panic!("parser errors: {:?}", errs));
+        let want = [Statement::Expression(Expression::Ident(ident("foo")))];
+
+        assert_eq!(got.statements, want);
+    }
+
+    #[test]
+    fn parse_int_literal_expression() {
+        let got = Parser::parse("42;").unwrap_or_else(|errs| panic!("parser errors: {:?}", errs));
+        let want = [Statement::Expression(Expression::Integer(42))];
+
+        assert_eq!(got.statements, want);
     }
 
     fn ident(name: &str) -> Ident {

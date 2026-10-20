@@ -8,12 +8,14 @@ pub enum Statement {
     Let(LetStatement),
     // return <expression>;
     Return(Expression),
+    Expression(Expression),
 }
 
 #[derive(Debug, PartialEq)]
 pub enum Expression {
     Ident(Ident),
     Integer(i64),
+    Prefix { op: String, right: Box<Expression> },
 }
 
 #[derive(Debug, PartialEq)]
