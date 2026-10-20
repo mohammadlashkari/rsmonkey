@@ -10,8 +10,11 @@ pub struct Lexer {
 }
 
 impl Lexer {
-    pub fn new(input: String) -> Self {
-        Self { input, position: 0 }
+    pub fn new(input: impl Into<String>) -> Self {
+        Self {
+            input: input.into(),
+            position: 0,
+        }
     }
 
     fn current(&self) -> Option<u8> {
@@ -78,7 +81,7 @@ impl Lexer {
 
     fn read_identifier(&mut self) -> &str {
         let start = self.position;
-        while self.current().is_some_and(is_letter) {
+        while self.current().is_some_and(is_ident_char) {
             self.advance();
         }
 
@@ -107,6 +110,11 @@ fn is_letter(ch: u8) -> bool {
     ch.is_ascii_alphabetic() || ch == b'_'
 }
 
+// Digits are allowed after the first letter: `foo1` is one identifier
+fn is_ident_char(ch: u8) -> bool {
+    is_letter(ch) || ch.is_ascii_digit()
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -114,7 +122,7 @@ mod tests {
 
     #[track_caller]
     fn assert_tokens(input: &str, want: &[Token]) {
-        let got: Vec<Token> = Lexer::new(input.to_string()).collect();
+        let got: Vec<Token> = Lexer::new(input).collect();
 
         for (i, (got, want)) in got.iter().zip(want).enumerate() {
             assert_eq!(got, want, "token[{i}] for input {input:?}");
@@ -145,8 +153,23 @@ mod tests {
     }
 
     #[test]
+    fn lex_identifiers_with_digits() {
+        let input = "foo1 x2y _a9 1x";
+        let want = [
+            Token::Ident("foo1".to_string()),
+            Token::Ident("x2y".to_string()),
+            Token::Ident("_a9".to_string()),
+            // Starts with a digit, so it's a number followed by an identifier
+            Token::Int(1),
+            Token::Ident("x".to_string()),
+        ];
+
+        assert_tokens(input, &want);
+    }
+
+    #[test]
     fn lex_simple() {
-        let input = r#"let foo = 5;"#;
+        let input = r"let foo = 5;";
         let want = [
             Token::Let,
             Token::Ident("foo".to_string()),
@@ -177,7 +200,7 @@ mod tests {
 
     #[test]
     fn lex_complex() {
-        let input = r#"
+        let input = r"
 let five = 5;
 let ten = 10;
 
@@ -198,7 +221,7 @@ if (5 < 10) {
 10 == 10;
 5 != 10;
 @#
-"#;
+";
 
         let want = [
             Token::Let,

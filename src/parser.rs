@@ -1,6 +1,6 @@
 use std::{fmt, iter::Peekable};
 
-use crate::ast::{Identifier, LetStatement, Program, Statement};
+use crate::ast::{Expression, Ident, LetStatement, Program, Statement};
 
 use crate::lexer::Lexer;
 use crate::token::Token;
@@ -13,6 +13,59 @@ impl Parser {
     pub fn new(lexer: Lexer) -> Self {
         Self {
             tokens: lexer.peekable(),
+        }
+    }
+
+    pub fn parse(input: impl Into<String>) -> Result<Program, Vec<ParseError>> {
+        Self {
+            tokens: Lexer::new(input).peekable(),
+        }
+        .parse_program()
+    }
+
+    fn parse_program(mut self) -> Result<Program, Vec<ParseError>> {
+        let mut program = Program::default();
+        let mut errors = Vec::new();
+
+        while self.tokens.peek().is_some() {
+            match self.parse_statement() {
+                Ok(stmt) => program.statements.push(stmt),
+                Err(err) => errors.push(err),
+            }
+        }
+        if errors.is_empty() {
+            Ok(program)
+        } else {
+            Err(errors)
+        }
+    }
+
+    fn parse_statement(&mut self) -> Result<Statement, ParseError> {
+        self.expect(Token::Let)?;
+        let stmt = Statement::Let(self.parse_let_statement()?);
+
+        // Semicolons are optional
+        self.eat(&Token::Semicolon);
+        Ok(stmt)
+    }
+
+    fn parse_let_statement(&mut self) -> Result<LetStatement, ParseError> {
+        let ident = self.expect_ident()?;
+        self.expect(Token::Assign)?;
+
+        let value = self.parse_expression()?;
+
+        Ok(LetStatement { ident, value })
+    }
+
+    fn parse_expression(&mut self) -> Result<Expression, ParseError> {
+        match self.tokens.next() {
+            Some(Token::Int(int)) => Ok(Expression::Integer(int)),
+            Some(Token::Ident(name)) => Ok(Expression::Ident(Ident { name })),
+            got => Err(ParseError {
+                got,
+                want: Expected::Expression,
+            }),
         }
     }
 
@@ -30,26 +83,14 @@ impl Parser {
         }
     }
 
-    fn expect_ident(&mut self) -> Result<Identifier, ParseError> {
+    fn expect_ident(&mut self) -> Result<Ident, ParseError> {
         match self.tokens.next() {
-            Some(Token::Ident(name)) => Ok(Identifier { name }),
+            Some(Token::Ident(name)) => Ok(Ident { name }),
             got => Err(ParseError {
                 got,
                 want: Expected::Ident,
             }),
         }
-    }
-
-    pub fn parse_program(&mut self) -> Program {
-        todo!()
-    }
-
-    fn parse_statement(&mut self) -> Statement {
-        todo!()
-    }
-
-    fn parse_let_statement(&mut self) -> LetStatement {
-        todo!()
     }
 }
 
@@ -191,7 +232,7 @@ mod tests {
         let mut parser = parser("foo");
 
         let got = parser.expect_ident();
-        let want = Ok(Identifier {
+        let want = Ok(Ident {
             name: "foo".to_string(),
         });
 
@@ -199,39 +240,72 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "parser not implemented yet"]
     fn let_statements() {
-        let input = r#"
+        let input = r"
 let x = 5;
 let y = 10;
 let foo = 424242;
-"#;
+";
 
-        let lexer = Lexer::new(input.to_string());
-        let mut parser = Parser::new(lexer);
-        let program = parser.parse_program();
+        let program = parser(input)
+            .parse_program()
+            .unwrap_or_else(|errs| panic!("parser errors: {errs:?}"));
 
-        assert_eq!(
-            program.statements.len(),
-            3,
-            "program.statements does not contain 3 statements"
-        );
+        let want = [let_int("x", 5), let_int("y", 10), let_int("foo", 424242)];
 
-        let want_identifiers = ["x", "y", "foo"];
-        for (stmt, want) in program.statements.iter().zip(want_identifiers) {
-            assert_let_statement(stmt, want);
+        assert_eq!(program.statements, want);
+    }
+
+    #[test]
+    fn let_statements_without_semicolons() {
+        let program = parser("let x = 5 let y = x")
+            .parse_program()
+            .unwrap_or_else(|errs| panic!("parser errors: {errs:?}"));
+
+        let want = [
+            let_int("x", 5),
+            Statement::Let(LetStatement {
+                ident: ident("y"),
+                value: Expression::Ident(ident("x")),
+            }),
+        ];
+
+        assert_eq!(program.statements, want);
+    }
+
+    #[test]
+    fn let_statement_fails_at_end_of_input() {
+        let got = parser("let x").parse_program();
+        let want = Err(vec![ParseError {
+            got: None,
+            want: Expected::Token(Token::Assign),
+        }]);
+
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    #[ignore = "needs error recovery (Task 6)"]
+    fn let_statement_reports_one_error_per_mistake() {
+        let got = parser("let x 5;").parse_program();
+        let want = Err(vec![ParseError {
+            got: Some(Token::Int(5)),
+            want: Expected::Token(Token::Assign),
+        }]);
+
+        assert_eq!(got, want);
+    }
+
+    fn ident(name: &str) -> Ident {
+        Ident {
+            name: name.to_string(),
         }
     }
 
-    fn assert_let_statement(stmt: &Statement, want: &str) {
-        let Statement::Let(let_stmt) = stmt else {
-            panic!("stmt is not Statement::Let got={stmt:?}");
-        };
-
-        let got = &let_stmt.ident.name;
-        assert_eq!(
-            got, want,
-            "let_stmt.ident.name wrong. got={got}, want={want}"
-        );
+    fn let_int(name: &str, value: i64) -> Statement {
+        Statement::Let(LetStatement {
+            ident: ident(name),
+            value: Expression::Integer(value),
+        })
     }
 }

@@ -10,17 +10,17 @@ pub enum Statement {
 
 #[derive(Debug, PartialEq)]
 pub enum Expression {
-    Identifier(Identifier),
+    Ident(Ident),
     Integer(i64),
 }
 
 #[derive(Debug, PartialEq)]
 pub struct LetStatement {
-    pub ident: Identifier,
+    pub ident: Ident,
     pub value: Expression,
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Identifier {
+pub struct Ident {
     pub name: String,
 }
