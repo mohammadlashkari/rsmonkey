@@ -41,11 +41,20 @@ impl Parser {
     }
 
     fn parse_statement(&mut self) -> Result<Statement, ParseError> {
-        self.expect(Token::Let)?;
-        let stmt = Statement::Let(self.parse_let_statement()?);
+        let stmt = if self.eat(&Token::Let) {
+            Statement::Let(self.parse_let_statement()?)
+        } else if self.eat(&Token::Return) {
+            Statement::Return(self.parse_expression()?)
+        } else {
+            return Err(ParseError {
+                got: self.tokens.next(),
+                want: Expected::Statement,
+            });
+        };
 
         // Semicolons are optional
         self.eat(&Token::Semicolon);
+
         Ok(stmt)
     }
 
@@ -106,6 +115,7 @@ pub enum Expected {
     Token(Token),
     Ident,
     Expression,
+    Statement,
 }
 
 impl fmt::Display for ParseError {
@@ -126,6 +136,7 @@ impl fmt::Display for Expected {
             Expected::Token(token) => write!(f, "'{token}'"),
             Expected::Ident => write!(f, "identifier"),
             Expected::Expression => write!(f, "expression"),
+            Expected::Statement => write!(f, "statement"),
         }
     }
 }
@@ -135,7 +146,7 @@ mod tests {
     use super::*;
 
     fn parser(input: &str) -> Parser {
-        let lexer = Lexer::new(input.to_string());
+        let lexer = Lexer::new(input);
         Parser::new(lexer)
     }
 
@@ -291,6 +302,34 @@ let foo = 424242;
         let want = Err(vec![ParseError {
             got: Some(Token::Int(5)),
             want: Expected::Token(Token::Assign),
+        }]);
+
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    fn return_statement() {
+        let input = r"
+return 5;
+return 10;
+return 4242;";
+        let got = Parser::parse(input).unwrap_or_else(|errs| panic!("parser errors: {:?}", errs));
+        let want = [
+            Statement::Return(Expression::Integer(5)),
+            Statement::Return(Expression::Integer(10)),
+            Statement::Return(Expression::Integer(4242)),
+        ];
+
+        assert_eq!(got.statements, want);
+    }
+
+    #[test]
+    fn return_statement_report_error() {
+        let got = Parser::parse("return;");
+
+        let want = Err(vec![ParseError {
+            got: Some(Token::Semicolon),
+            want: Expected::Expression,
         }]);
 
         assert_eq!(got, want);
