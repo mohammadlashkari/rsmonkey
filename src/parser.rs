@@ -3,6 +3,7 @@ use std::{fmt, iter::Peekable};
 use crate::ast::{self, Expression, Ident, LetStatement, Program, Statement};
 
 use crate::lexer::Lexer;
+use crate::span::Spanned;
 use crate::token::Token;
 
 pub struct Parser {
@@ -27,10 +28,7 @@ impl Parser {
     }
 
     pub fn parse(input: impl Into<String>) -> Result<Program, Vec<ParseError>> {
-        Self {
-            tokens: Lexer::new(input).peekable(),
-        }
-        .parse_program()
+        Self::new(Lexer::new(input)).parse_program()
     }
 
     fn parse_program(mut self) -> Result<Program, Vec<ParseError>> {
@@ -79,23 +77,30 @@ impl Parser {
     }
 
     fn parse_prefix_expression(&mut self) -> Result<Expression, ParseError> {
-        match self.tokens.next() {
-            Some(Token::Int(int)) => Ok(Expression::Integer(int)),
-            Some(Token::Ident(name)) => Ok(Expression::Ident(Ident { name })),
-            got => Err(ParseError {
-                got,
+        let Some(token) = self.tokens.next() else {
+            return Err(ParseError {
+                got: None,
+                want: Expected::Expression,
+            });
+        };
+
+        match token.node {
+            Token::Int(int) => Ok(Expression::Integer(int)),
+            Token::Ident(name) => Ok(Expression::Ident(Ident { name })),
+            _ => Err(ParseError {
+                got: Some(token),
                 want: Expected::Expression,
             }),
         }
     }
 
     fn eat(&mut self, token: &Token) -> bool {
-        self.tokens.next_if_eq(token).is_some()
+        self.tokens.next_if(|s| s.node == *token).is_some()
     }
 
     fn expect(&mut self, want: Token) -> Result<(), ParseError> {
         match self.tokens.next() {
-            Some(got) if got == want => Ok(()),
+            Some(got) if got.node == want => Ok(()),
             got => Err(ParseError {
                 got,
                 want: Expected::Token(want),
@@ -104,10 +109,17 @@ impl Parser {
     }
 
     fn expect_ident(&mut self) -> Result<Ident, ParseError> {
-        match self.tokens.next() {
-            Some(Token::Ident(name)) => Ok(Ident { name }),
-            got => Err(ParseError {
-                got,
+        let Some(token) = self.tokens.next() else {
+            return Err(ParseError {
+                got: None,
+                want: Expected::Ident,
+            });
+        };
+
+        match token.node {
+            Token::Ident(name) => Ok(Ident { name }),
+            _ => Err(ParseError {
+                got: Some(token),
                 want: Expected::Ident,
             }),
         }
@@ -117,7 +129,7 @@ impl Parser {
 #[derive(Debug, PartialEq)]
 pub struct ParseError {
     // None means end of input
-    pub got: Option<Token>,
+    pub got: Option<Spanned<Token>>,
     pub want: Expected,
 }
 
@@ -132,7 +144,7 @@ impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "expected {}, got ", self.want)?;
         match &self.got {
-            Some(token) => write!(f, "'{token}'"),
+            Some(t) => write!(f, "'{}' at {}", t.node, t.span),
             None => write!(f, "end of input"),
         }
     }
@@ -155,19 +167,27 @@ mod tests {
     use core::panic;
 
     use super::*;
+    use crate::span::Span;
 
     fn parser(input: &str) -> Parser {
         let lexer = Lexer::new(input);
         Parser::new(lexer)
     }
 
+    fn spanned(node: Token, start: usize, end: usize) -> Spanned<Token> {
+        Spanned {
+            node,
+            span: Span::new(start, end),
+        }
+    }
+
     #[test]
     fn parse_error_display() {
         let err = ParseError {
             want: Expected::Token(Token::Assign),
-            got: Some(Token::Int(5)),
+            got: Some(spanned(Token::Int(5), 8, 9)),
         };
-        assert_eq!(err.to_string(), "expected '=', got '5'");
+        assert_eq!(err.to_string(), "expected '=', got '5' at 8..9");
 
         let err = ParseError {
             want: Expected::Ident,
@@ -183,7 +203,7 @@ mod tests {
 
         assert!(parser.eat(&Token::Assign));
         assert!(!parser.eat(&Token::Assign));
-        assert_eq!(parser.tokens.next(), Some(Token::Int(5)));
+        assert_eq!(parser.tokens.next(), Some(spanned(Token::Int(5), 2, 3)));
     }
 
     #[test]
@@ -194,7 +214,7 @@ mod tests {
         let want = Ok(());
 
         assert_eq!(got, want);
-        assert_eq!(parser.tokens.next(), Some(Token::Int(5)));
+        assert_eq!(parser.tokens.next(), Some(spanned(Token::Int(5), 2, 3)));
     }
 
     #[test]
@@ -203,7 +223,7 @@ mod tests {
 
         let got = parser.expect(Token::Assign);
         let want = Err(ParseError {
-            got: Some(Token::Int(5)),
+            got: Some(spanned(Token::Int(5), 0, 1)),
             want: Expected::Token(Token::Assign),
         });
 
@@ -242,7 +262,7 @@ mod tests {
 
         let got = parser.expect_ident();
         let want = Err(ParseError {
-            got: Some(Token::Int(5)),
+            got: Some(spanned(Token::Int(5), 0, 1)),
             want: Expected::Ident,
         });
 
@@ -311,7 +331,7 @@ let foo = 424242;
     fn let_statement_reports_one_error_per_mistake() {
         let got = parser("let x 5;").parse_program();
         let want = Err(vec![ParseError {
-            got: Some(Token::Int(5)),
+            got: Some(spanned(Token::Int(5), 6, 7)),
             want: Expected::Token(Token::Assign),
         }]);
 
@@ -339,7 +359,7 @@ return 4242;";
         let got = Parser::parse("return;");
 
         let want = Err(vec![ParseError {
-            got: Some(Token::Semicolon),
+            got: Some(spanned(Token::Semicolon, 6, 7)),
             want: Expected::Expression,
         }]);
 
