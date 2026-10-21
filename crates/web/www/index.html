@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>rsmonkey playground</title>
+    <link rel="stylesheet" href="style.css" />
+    <!-- Modules are deferred: this runs after the page is parsed -->
+    <script type="module" src="main.js"></script>
+  </head>
+  <body>
+    <div class="page">
+      <header>
+        <h1>rs<span>monkey c(o.o)ↄ</span></h1>
+        <p>
+          The Monkey language in Rust, running in your browser via WebAssembly.
+        </p>
+        <a href="https://github.com/mohammadlashkari/rsmonkey">source</a>
+      </header>
+
+      <main>
+        <section class="pane editor">
+          <h2><label for="source">Source</label></h2>
+          <textarea
+            id="source"
+            spellcheck="false"
+            autocapitalize="off"
+            autocomplete="off"
+          >
+let foo = 42;
+let bar = 23;
+return foo;
+</textarea
+          >
+        </section>
+
+        <section class="pane">
+          <h2>Tokens</h2>
+          <pre id="tokens">Loading…</pre>
+        </section>
+
+        <section class="pane">
+          <h2>AST</h2>
+          <pre id="ast">Loading…</pre>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

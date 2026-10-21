@@ -1,0 +1,152 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f6f6f3;
+  --panel: #ffffff;
+  --text: #1f2328;
+  --muted: #656d76;
+  --border: #d8dce0;
+  --accent: #b35c00;
+  --error: #c4231c;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1216;
+    --panel: #171b21;
+    --text: #e6edf3;
+    --muted: #8d96a0;
+    --border: #2d333b;
+    --accent: #f0883e;
+    --error: #ff7b72;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 system-ui, sans-serif;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100dvh;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 16px;
+}
+
+h1 {
+  margin: 0;
+  font: 600 22px var(--mono);
+}
+
+h1 span {
+  color: var(--accent);
+}
+
+header p {
+  margin: 0;
+  color: var(--muted);
+}
+
+header a {
+  margin-left: auto;
+  color: var(--muted);
+}
+
+/* Editor on the left, tokens and AST stacked on the right */
+main {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 12px;
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.pane.editor {
+  grid-row: span 2;
+}
+
+.pane h2 {
+  margin: 0;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+textarea,
+pre {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: 14px/1.5 var(--mono);
+  tab-size: 4;
+  overflow: auto;
+}
+
+textarea {
+  resize: none;
+  outline: none;
+}
+
+pre.error {
+  color: var(--error);
+}
+
+/* Phones: one column, page scrolls instead of the panes */
+@media (max-width: 720px) {
+  .page {
+    height: auto;
+  }
+
+  main {
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+  }
+
+  .pane.editor {
+    grid-row: auto;
+  }
+
+  textarea {
+    min-height: 240px;
+  }
+
+  pre {
+    max-height: 50vh;
+  }
+}
