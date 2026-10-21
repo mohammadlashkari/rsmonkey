@@ -1,7 +1,7 @@
+use crate::span::{Span, Spanned};
 use crate::token::{Token, lookup_identifier};
 
 // TODO: Support UTF-8
-// TODO: Add span to Lexer
 
 pub struct Lexer {
     input: String,
@@ -29,53 +29,55 @@ impl Lexer {
         self.position += 1;
     }
 
-    fn next_token(&mut self) -> Option<Token> {
+    fn next_token(&mut self) -> Option<Spanned<Token>> {
         self.skip_whitespace();
 
+        let start = self.position;
         let current = self.current()?;
 
-        let token = match current {
-            b'=' if self.peek() == Some(b'=') => {
-                self.advance();
-                Token::Eq
-            }
-            b'=' => Token::Assign,
-            b'+' => Token::Plus,
-            b'(' => Token::LParen,
-            b')' => Token::RParen,
-            b'{' => Token::LBrace,
-            b'}' => Token::RBrace,
-            b',' => Token::Comma,
-            b';' => Token::Semicolon,
-            b'-' => Token::Minus,
-            b'*' => Token::Asterisk,
-            b'!' if self.peek() == Some(b'=') => {
-                self.advance();
-                Token::NotEq
-            }
-            b'!' => Token::Bang,
-            b'/' => Token::Slash,
-            b'>' => Token::Gt,
-            b'<' => Token::Lt,
-            c if is_letter(c) => return Some(lookup_identifier(self.read_identifier())),
-            c if c.is_ascii_digit() => {
-                let literal = self.read_number();
-
-                return Some(match literal.parse::<i64>() {
-                    Ok(num) => Token::Int(num),
-                    Err(_) => Token::Illegal(literal.to_string()),
-                });
-            }
-            c => Token::Illegal(char::from(c).to_string()),
+        let token = match (current, self.peek()) {
+            (b'=', Some(b'=')) => self.take(2, Token::Eq),
+            (b'!', Some(b'=')) => self.take(2, Token::NotEq),
+            (b'=', _) => self.take(1, Token::Assign),
+            (b'+', _) => self.take(1, Token::Plus),
+            (b'(', _) => self.take(1, Token::LParen),
+            (b')', _) => self.take(1, Token::RParen),
+            (b'{', _) => self.take(1, Token::LBrace),
+            (b'}', _) => self.take(1, Token::RBrace),
+            (b',', _) => self.take(1, Token::Comma),
+            (b';', _) => self.take(1, Token::Semicolon),
+            (b'-', _) => self.take(1, Token::Minus),
+            (b'*', _) => self.take(1, Token::Asterisk),
+            (b'!', _) => self.take(1, Token::Bang),
+            (b'/', _) => self.take(1, Token::Slash),
+            (b'>', _) => self.take(1, Token::Gt),
+            (b'<', _) => self.take(1, Token::Lt),
+            (c, _) if is_letter(c) => self.lex_identifier(),
+            (c, _) if c.is_ascii_digit() => self.lex_number(),
+            (c, _) => self.take(1, Token::Illegal(char::from(c).to_string())),
         };
 
-        self.advance();
-        Some(token)
+        Some(Spanned {
+            node: token,
+            span: Span::new(start, self.position),
+        })
     }
 
-    fn skip_whitespace(&mut self) {
-        while self.current().is_some_and(|c| c.is_ascii_whitespace()) {
-            self.advance();
+    /// Consume `len` bytes and return `token`.
+    fn take(&mut self, len: usize, token: Token) -> Token {
+        self.position += len;
+        token
+    }
+
+    fn lex_identifier(&mut self) -> Token {
+        lookup_identifier(self.read_identifier())
+    }
+
+    fn lex_number(&mut self) -> Token {
+        let literal = self.read_number();
+        match literal.parse() {
+            Ok(num) => Token::Int(num),
+            Err(_) => Token::Illegal(literal.to_string()),
         }
     }
 
@@ -96,12 +98,18 @@ impl Lexer {
 
         &self.input[start..self.position]
     }
+
+    fn skip_whitespace(&mut self) {
+        while self.current().is_some_and(|c| c.is_ascii_whitespace()) {
+            self.advance();
+        }
+    }
 }
 
 impl Iterator for Lexer {
-    type Item = Token;
+    type Item = Spanned<Token>;
 
-    fn next(&mut self) -> Option<Token> {
+    fn next(&mut self) -> Option<Self::Item> {
         self.next_token()
     }
 }
@@ -122,10 +130,10 @@ mod tests {
 
     #[track_caller]
     fn assert_tokens(input: &str, want: &[Token]) {
-        let got: Vec<Token> = Lexer::new(input).collect();
+        let got: Vec<Spanned<Token>> = Lexer::new(input).collect();
 
         for (i, (got, want)) in got.iter().zip(want).enumerate() {
-            assert_eq!(got, want, "token[{i}] for input {input:?}");
+            assert_eq!(got.node, *want, "token[{i}] for input {input:?}");
         }
         assert_eq!(got.len(), want.len(), "token count for input {input:?}");
     }
