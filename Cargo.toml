@@ -1,6 +1,12 @@
-[package]
-name = "rsmonkey"
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
 
-[dependencies]
+[workspace.dependencies]
+rsmonkey = { path = "crates/rsmonkey" }
+wasm-bindgen = "0.2"

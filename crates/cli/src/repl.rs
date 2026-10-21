@@ -1,12 +1,12 @@
 use std::io::{BufRead, Write};
 
-use crate::lexer::Lexer;
+use rsmonkey::lexer::Lexer;
 
 const PROMPT: &str = ">> ";
 
 pub fn start<R: BufRead, W: Write>(mut input: R, mut output: W) -> std::io::Result<()> {
     loop {
-        write!(output, "{PROMPT}")?;
+        write!(output, "{}", PROMPT)?;
         output.flush()?;
 
         let mut line = String::new();
@@ -15,7 +15,7 @@ pub fn start<R: BufRead, W: Write>(mut input: R, mut output: W) -> std::io::Resu
         }
 
         for token in Lexer::new(line) {
-            writeln!(output, "{token:?}")?;
+            writeln!(output, "{:?}", token.node)?;
         }
     }
 }

@@ -1,0 +1,13 @@
+[package]
+name = "rsmonkey-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "rsmonkey"
+path = "src/main.rs"
+doc = false
+
+[dependencies]
+rsmonkey.workspace = true
